@@ -1,0 +1,43 @@
+---
+- name: Create MariaDB data directory
+  file:
+    name: "{{ mariadb_data_dir }}"
+    state: "directory"
+    owner: "999"
+    group: "999"
+
+- name: Generate mariadb config file
+  template:
+    src: "mysqld.cnf.j2"
+    dest: "{{ mariadb_data_dir }}/mysqld.cnf"
+  register: gen_mariadb_conf
+
+- name: Create MariaDB container
+  docker_container:
+    name: "{{ mariadb_container_name }}"
+    image: "{{ mariadb_container_image }}"
+    restart_policy: "always"
+    restart: "{{ gen_mariadb_conf.changed }}"
+    env:
+      MYSQL_ROOT_PASSWORD: "{{ mariadb_admin_password }}"
+    command: "mysqld --character-set-server=utf8 --collation-server=utf8_general_ci"
+    stop_timeout: 3600
+    networks:
+      - name: "{{ mariadb_container_network }}"
+    networks_cli_compatible: true
+    exposed_ports:
+      - "3306"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ mariadb_data_dir }}:/var/lib/mysql:rw"
+      - "{{ mariadb_data_dir }}/mysqld.cnf:/etc/mysql/conf.d/mysqld.cnf:ro"
+  register: mariadb
+
+- name: Wait for MariaDB to be ready
+  shell: |
+    docker exec "{{ mariadb_container_name }}" mysqladmin ping --silent
+  register: mariadb_ready
+  until: mariadb_ready.rc == 0
+  retries: 5
+  delay: 10
+  when: mariadb.changed

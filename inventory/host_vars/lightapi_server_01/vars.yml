@@ -1,0 +1,32 @@
+---
+# docker configuration
+docker_network_name: "network01"
+
+# mariadb configuration
+mariadb_hostname: "mariadb" # used as mariadb container name
+mariadb_admin_pass: "" # used as mariadb admin password
+mariadb_data_location: "/mnt/mysql"
+
+# lightapi configuration
+lightapi_image: "ghcr.io/greymass/lightapi:latest"
+lightapi_db_password: ""
+lightapi_port: "80"
+lightapi_websocket_port: "8080"
+
+# nodeos configuration
+nodeos_image: "ghcr.io/greymass/leap:latest"
+
+# chronicle configuration
+chronicle_image: "ghcr.io/greymass/chronicle:v2.2"
+
+# eos configuration
+eos_nodeos_config_location: "/ramdisk/eos/nodeos"
+eos_nodeos_data_location: "/mnt/eos/nodeos"
+eos_chronicle_config_location: "/ramdisk/eos/chronicle"
+eos_chronicle_data_location: "/mnt/eos/chronicle"
+
+# telos configuration
+telos_nodeos_config_location: "/ramdisk/telos/nodeos"
+telos_nodeos_data_location: "/mnt/telos/nodeos"
+telos_chronicle_config_location: "/ramdisk/telos/chronicle"
+telos_chronicle_data_location: "/mnt/telos/chronicle"

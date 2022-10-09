@@ -1,0 +1,19 @@
+---
+- name: Install dependency packages
+  apt:
+    name: "{{ pkg_deps }}"
+    update_cache: yes
+    state: present
+  register: package_installation
+
+- name: prepare docker network
+  docker_network:
+    driver: "bridge"
+    name: "{{ docker_network_name }}"
+    state: "present"
+
+- name: prune dangling docker resources
+  docker_prune:
+    images: yes
+    images_filters:
+      dangling: true

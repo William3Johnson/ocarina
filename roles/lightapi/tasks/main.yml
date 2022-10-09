@@ -1,0 +1,103 @@
+---
+- name: Get mariadb container info
+  community.docker.docker_container_info:
+    name: "{{ mariadb_hostname }}"
+  register: mariadb_container_info
+
+- name: Creating lightapi database
+  mysql_db:
+    login_host: "{{ mariadb_container_info.container.NetworkSettings.Networks[docker_network_name].IPAddress}}"
+    login_user: "root"
+    login_password: "{{ mariadb_admin_password }}"
+    name: "{{ mariadb_db }}"
+  register: mariadb_initialization
+
+- name: Creating lightapi database user
+  mysql_user:
+    login_host: "{{ mariadb_container_info.container.NetworkSettings.Networks[docker_network_name].IPAddress}}"
+    login_user: "root"
+    login_password: "{{ mariadb_admin_password }}"
+    name: "{{ mariadb_user }}"
+    password: "{{ mariadb_password }}"
+    encrypted: false
+    host: "%"
+    priv: "{{ mariadb_db }}.*:ALL,GRANT"
+
+- name: Creating lightapi read only database user
+  mysql_user:
+    login_host: "{{ mariadb_container_info.container.NetworkSettings.Networks[docker_network_name].IPAddress}}"
+    login_user: "root"
+    login_password: "{{ mariadb_admin_password }}"
+    name: "{{ mariadb_ro_user }}"
+    password: "{{ mariadb_ro_user_pass }}"
+    encrypted: false
+    host: "%"
+    priv: "{{ mariadb_db }}.*:SELECT,GRANT"
+
+- name: Ensure lightapi database basic tables
+  docker_container:
+    name: "lightapi-db-migrate"
+    image: "{{ lightapi_container_image }}"
+    pull: true
+    command: |
+      bash -c "mysql -h {{ mariadb_host }} -u {{ mariadb_user }} --password={{ mariadb_password }} < /opt/eosio_light_api/greymass_addons/add_basic_tables.sql"
+    detach: false
+    cleanup: true
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+  when: mariadb_initialization.changed
+
+- name: Ensure lightapi api container
+  docker_container:
+    name: "lightapi-api"
+    image: "{{ lightapi_container_image }}"
+    restart_policy: "always"
+    restart: "{{ mariadb_initialization.changed }}"
+    env:
+      LIGHTAPI_HOME: "/opt/eosio_light_api"
+    command: |
+      bash -c "sed 's/host=localhost/host={{ mariadb_host }}/g' /opt/eosio_light_api/api/lightapi.psgi > /opt/eosio_light_api/api/lightapi_greymass.psgi && starman --listen 0.0.0.0:5001 --workers 6 /opt/eosio_light_api/api/lightapi_greymass.psgi"
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: true
+    exposed_ports:
+      - "5001"
+    published_ports:
+      - "0.0.0.0:{{ lightapi_port }}:5001"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+
+- name: Ensure lightapi wsapi container
+  docker_container:
+    name: "lightapi-wsapi"
+    image: "{{ lightapi_container_image }}"
+    restart_policy: "always"
+    restart: "{{ mariadb_initialization.changed }}"
+    env:
+      LIGHTAPI_HOME: "/opt/eosio_light_api"
+    command: "/usr/bin/node /opt/eosio_light_api/wsapi/lightapi_wsapi.js --httpport 5101 --httphost 0.0.0.0 --dbhost {{ mariadb_host }}"
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: true
+    exposed_ports:
+      - "0.0.0.0:{{ lightapi_websocket_port }}:5101"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+
+- name: Ensure lightapi holdercounts container
+  docker_container:
+    name: "lightapi-holdercounts"
+    image: "{{ lightapi_container_image }}"
+    restart_policy: "always"
+    restart: "{{ mariadb_initialization.changed }}"
+    env:
+      LIGHTAPI_HOME: "/opt/eosio_light_api"
+    command: "bash -c 'while true; do perl /opt/eosio_light_api/scripts/lightapi_holdercounts.pl; sleep 300; done'"
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: true
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"

@@ -1,0 +1,142 @@
+---
+- name: Create telos nodeos directories
+  ansible.builtin.file:
+    name: "{{ item }}"
+    state: "directory"
+    owner: "root"
+    group: "root"
+  with_items:
+    - "{{ nodeos_config_dir }}"
+    - "{{ nodeos_data_dir }}"
+    - "{{ nodeos_snapshots_dir }}"
+    - "{{ chronicle_config_dir }}"
+    - "{{ chronicle_data_dir }}"
+
+- name: Generate telos nodeos config
+  template:
+    src: "config.ini.j2"
+    dest: "{{ nodeos_config_dir }}/config.ini"
+  register: gen_nodeos_conf
+
+- name: Get telos nodeos container info
+  community.docker.docker_container_info:
+    name: "{{ nodeos_container_name }}"
+  register: telos_nodeos_container
+
+- include_tasks: bootstrap_nodeos.yml
+  when: not telos_nodeos_container.exists
+
+- name: Ensure telos nodeos container
+  community.docker.docker_container:
+    name: "{{ nodeos_container_name }}"
+    image: "{{ nodeos_container_image }}"
+    pull: true
+    restart_policy: "unless-stopped"
+    restart: "{{ gen_nodeos_conf.changed }}"
+    timeout: 600
+    stop_timeout: 600
+    state: "started"
+    output_logs: "yes"
+    log_driver: "journald"
+    log_options:
+      tag: "telos-nodeos"
+    command: "nodeos --config-dir /etc/nodeos --data-dir /opt/nodeos --disable-replay-opts"
+    networks:
+      - name: "{{ nodeos_container_network }}"
+    networks_cli_compatible: "yes"
+    exposed_ports:
+      - "8080"
+      - "8888"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ nodeos_config_dir }}:/etc/nodeos:rw"
+      - "{{ nodeos_data_dir }}:/opt/nodeos:rw"
+
+- name: Extract telos nodeos start block
+  shell: |
+    docker logs "{{ nodeos_container_name }}" 2>&1 | grep 'trace_history.log has blocks' | awk '{print $10}' | cut -d '-' -f 1 | head -1
+  register: start_block
+  until: start_block.stdout != ''
+  retries: 1000
+  delay: 10
+
+- name: Ensure lightapi database telos related tables
+  docker_container:
+    name: "lightapi-db-migrate-telos"
+    image: "{{ lightapi_container_image }}"
+    pull: true
+    command: |
+      bash -c "sed -e 's,\%\%,telos,g' /opt/eosio_light_api/greymass_addons/add_chain_specific_tables.sql | mysql -h {{ mariadb_host }} -u {{ mariadb_user }} --password={{ mariadb_password }}"
+    detach: false
+    cleanup: true
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+  when: not telos_nodeos_container.exists
+
+- name: Add telos main net
+  docker_container:
+    name: "lightapi-db-migrate-telos"
+    image: "{{ lightapi_container_image }}"
+    pull: true
+    command: |
+      bash -c "LIGHTAPI_DB_OPTS='--dsn=DBI:MariaDB:database={{ mariadb_db }};host={{ mariadb_host }} --dbuser={{ mariadb_user }} --dbpw={{ mariadb_password }}' sh /opt/eosio_light_api/setup/add_telos_mainnet.sh"
+    detach: false
+    cleanup: true
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+  when: not telos_nodeos_container.exists
+
+- name: Ensure lightapi telos dbwrite container
+  docker_container:
+    name: "{{ lightapi_dbwrite_container_name }}"
+    image: "{{ lightapi_container_image }}"
+    restart_policy: "always"
+    env:
+      LIGHTAPI_HOME: "/opt/eosio_light_api"
+    command: "perl /opt/eosio_light_api/scripts/lightapi_dbwrite.pl --network=telos --port={{ lightapi_dbwrite_port }} --dsn=DBI:MariaDB:database={{ mariadb_db }};host={{ mariadb_host }} --dbuser={{ mariadb_user }} --dbpw={{ mariadb_password }}"
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: true
+    exposed_ports:
+      - "{{ lightapi_dbwrite_port }}"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+
+- name: Generate telos chronicle config
+  template:
+    src: "chronicle.ini.j2"
+    dest: "{{ chronicle_config_dir }}/chronicle.ini"
+  register: gen_chronicle_conf
+
+- name: Get telos chronicle container info
+  community.docker.docker_container_info:
+    name: "{{ chronicle_container_name }}"
+  register: telos_chronicle_container
+
+- include_tasks: bootstrap_chronicle.yml
+  when: not telos_chronicle_container.exists
+
+- name: Ensure telos chronicle container
+  community.docker.docker_container:
+    name: "{{ chronicle_container_name }}"
+    image: "{{ chronicle_container_image }}"
+    pull: true
+    restart_policy: "unless-stopped"
+    restart: "{{ gen_chronicle_conf.changed }}"
+    timeout: 600
+    stop_timeout: 600
+    state: "started"
+    command: "chronicle-receiver -c /etc/chronicle/chronicle.ini -d /opt/chronicle"
+    networks:
+      - name: "{{ chronicle_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ chronicle_config_dir }}:/etc/chronicle:rw"
+      - "{{ chronicle_data_dir }}:/opt/chronicle:rw"

@@ -1,0 +1,10 @@
+---
+- name: Deploy lightapi for eos and telos
+  become: true
+  hosts: lightapi_servers
+  roles:
+    - common
+    - mariadb
+    - lightapi
+    - eos
+    - telos

@@ -1,0 +1,8 @@
+---
+mariadb_container_image: "mariadb:10"
+mariadb_container_name: "{{ mariadb_hostname }}"
+mariadb_container_network: "{{ docker_network_name }}"
+
+mariadb_data_dir: "{{ mariadb_data_location }}"
+
+mariadb_admin_password: "{{ mariadb_admin_pass }}"

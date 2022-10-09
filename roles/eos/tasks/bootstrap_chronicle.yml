@@ -1,0 +1,28 @@
+---
+- name: Start eos chronicle with start block
+  community.docker.docker_container:
+    name: "{{ chronicle_container_name }}"
+    image: "{{ chronicle_container_image }}"
+    pull: true
+    restart_policy: "unless-stopped"
+    timeout: 720000
+    stop_timeout: 600
+    state: "started"
+    command: "chronicle-receiver -c /etc/chronicle/chronicle.ini -d /opt/chronicle --start-block={{ start_block.stdout }}"
+    networks:
+      - name: "{{ chronicle_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ chronicle_config_dir }}:/etc/chronicle:rw"
+      - "{{ chronicle_data_dir }}:/opt/chronicle:rw"
+  register: chronicle_bootstrap
+
+- name: Wait for eos chronicle to be ready
+  shell: |
+    docker logs "{{ chronicle_container_name }}" 2>&1 | grep 'irreversible='
+  when: chronicle_bootstrap.changed
+  register: chronicle_initialized
+  until: chronicle_initialized.rc == 0
+  retries: 1000
+  delay: 10

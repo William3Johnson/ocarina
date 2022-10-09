@@ -1,0 +1,51 @@
+---
+# nodeos
+nodeos_container_image: "{{ nodeos_image }}"
+nodeos_container_name: "telos-nodeos"
+nodeos_container_network: "{{ docker_network_name }}"
+
+nodeos_config_dir: "{{ telos_nodeos_config_location }}"
+nodeos_data_dir: "{{ telos_nodeos_data_location }}"
+nodeos_snapshot_url: "https://snapshots.greymass.network/telos/latest.tar.gz"
+nodeos_snapshots_dir: "/tmp/telos_snapshots"
+
+nodeos_chain_state_dbsize: "64000"
+nodeos_validation_mode: "light"
+nodeos_trace_history: "true"
+nodeos_chain_state_history: "true"
+nodeos_plugins:
+  - "plugin = eosio::chain_plugin"
+  - "plugin = eosio::net_plugin"
+  - "plugin = eosio::state_history_plugin"
+  - "plugin = eosio::chain_api_plugin"
+  - "plugin = eosio::http_plugin"
+nodeos_peer_addresses:
+  - "p2p-peer-address = p2p.telosunlimited.io:9876"
+  - "p2p-peer-address = p2p.dailytelos.net:9876"
+  - "p2p-peer-address = seed.telosmadrid.io:9876"
+  - "p2p-peer-address = telos.p2p.boid.animus.is:5252"
+  - "p2p-peer-address = telos.p2p.boid.animus.is:5151"
+  - "p2p-peer-address = kandaweather-mainnet.ddns.net:9876"
+  - "p2p-peer-address = peer1-telos.eosphere.io:9876"
+  - "p2p-peer-address = peer2-telos.eosphere.io:9876"
+  - "p2p-peer-address = telos.seed.eosnation.io:9876"
+  - "p2p-peer-address = p2p.telosgermany.genereos.io:9876"
+  - "p2p-peer-address = telos.eosusa.io:9876"
+
+# lightapi dbwrite
+lightapi_container_image: "{{ lightapi_image }}"
+lightapi_container_network: "{{ docker_network_name }}"
+lightapi_dbwrite_container_name: "telos-lightapi-dbwrite"
+lightapi_dbwrite_port: "8080"
+mariadb_host: "{{ mariadb_hostname }}"
+# this value is hardcoded as is in lightapi
+mariadb_db: "lightapi"
+mariadb_user: "lightapi"
+mariadb_password: "{{ lightapi_db_password }}"
+
+# chronicle
+chronicle_container_image: "{{ chronicle_image }}"
+chronicle_container_name: "telos-chronicle"
+chronicle_container_network: "{{ docker_network_name }}"
+chronicle_config_dir: "{{ telos_chronicle_config_location }}"
+chronicle_data_dir: "{{ telos_chronicle_data_location }}"

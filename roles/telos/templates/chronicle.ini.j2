@@ -1,0 +1,13 @@
+# connection to nodeos state_history_plugin
+host = {{ nodeos_container_name }}
+port = 8080
+mode = scan
+plugin = exp_ws_plugin
+# connection to lightapi dbrite container
+exp-ws-host = {{ lightapi_dbwrite_container_name }}
+exp-ws-port = {{ lightapi_dbwrite_port }}
+exp-ws-bin-header = true
+skip-block-events = true
+skip-traces = true
+blacklist-tables-contract = atomicassets
+blacklist-tables-contract = atomicmarket

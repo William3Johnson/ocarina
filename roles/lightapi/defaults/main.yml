@@ -1,0 +1,12 @@
+---
+lightapi_container_image: "{{ lightapi_image }}"
+lightapi_container_network: "{{ docker_network_name }}"
+
+mariadb_host: "{{ mariadb_hostname }}"
+mariadb_admin_password: "{{ mariadb_admin_pass }}"
+# those value are hardcoded somewhere in lightapi
+mariadb_db: "lightapi"
+mariadb_user: "lightapi"
+mariadb_password: "{{ lightapi_db_password }}"
+mariadb_ro_user: "lightapiro"
+mariadb_ro_user_pass: "lightapiro"

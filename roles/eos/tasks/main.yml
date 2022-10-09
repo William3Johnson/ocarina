@@ -1,0 +1,142 @@
+---
+- name: Create eos nodeos directories
+  ansible.builtin.file:
+    name: "{{ item }}"
+    state: "directory"
+    owner: "root"
+    group: "root"
+  with_items:
+    - "{{ nodeos_config_dir }}"
+    - "{{ nodeos_data_dir }}"
+    - "{{ nodeos_snapshots_dir }}"
+    - "{{ chronicle_config_dir }}"
+    - "{{ chronicle_data_dir }}"
+
+- name: Generate eos nodeos config
+  template:
+    src: "config.ini.j2"
+    dest: "{{ nodeos_config_dir }}/config.ini"
+  register: gen_nodeos_conf
+
+- name: Get eos nodeos container info
+  community.docker.docker_container_info:
+    name: "{{ nodeos_container_name }}"
+  register: eos_nodeos_container
+
+- include_tasks: bootstrap_nodeos.yml
+  when: not eos_nodeos_container.exists
+
+- name: Ensure eos nodeos container
+  community.docker.docker_container:
+    name: "{{ nodeos_container_name }}"
+    image: "{{ nodeos_container_image }}"
+    pull: true
+    restart_policy: "unless-stopped"
+    restart: "{{ gen_nodeos_conf.changed }}"
+    timeout: 600
+    stop_timeout: 600
+    state: "started"
+    output_logs: "yes"
+    log_driver: "journald"
+    log_options:
+      tag: "eos-nodeos"
+    command: "nodeos --config-dir /etc/nodeos --data-dir /opt/nodeos --disable-replay-opts"
+    networks:
+      - name: "{{ nodeos_container_network }}"
+    networks_cli_compatible: "yes"
+    exposed_ports:
+      - "8080"
+      - "8888"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ nodeos_config_dir }}:/etc/nodeos:rw"
+      - "{{ nodeos_data_dir }}:/opt/nodeos:rw"
+
+- name: Extract eos nodeos start block
+  shell: |
+    docker logs "{{ nodeos_container_name }}" 2>&1 | grep 'trace_history.log has blocks' | awk '{print $10}' | cut -d '-' -f 1 | head -1
+  register: start_block
+  until: start_block.stdout != ''
+  retries: 1000
+  delay: 10
+
+- name: Ensure lightapi database eos related tables
+  docker_container:
+    name: "lightapi-db-migrate-eos"
+    image: "{{ lightapi_container_image }}"
+    pull: true
+    command: |
+      bash -c "sed -e 's,\%\%,eos,g' /opt/eosio_light_api/greymass_addons/add_chain_specific_tables.sql | mysql -h {{ mariadb_host }} -u {{ mariadb_user }} --password={{ mariadb_password }}"
+    detach: false
+    cleanup: true
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+  when: not eos_nodeos_container.exists
+
+- name: Add eos main net
+  docker_container:
+    name: "lightapi-db-migrate-eos"
+    image: "{{ lightapi_container_image }}"
+    pull: true
+    command: |
+      bash -c "LIGHTAPI_DB_OPTS='--dsn=DBI:MariaDB:database={{ mariadb_db }};host={{ mariadb_host }} --dbuser={{ mariadb_user }} --dbpw={{ mariadb_password }}' sh /opt/eosio_light_api/setup/add_eos_mainnet.sh"
+    detach: false
+    cleanup: true
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+  when: not eos_nodeos_container.exists
+
+- name: Ensure lightapi eos dbwrite container
+  docker_container:
+    name: "{{ lightapi_dbwrite_container_name }}"
+    image: "{{ lightapi_container_image }}"
+    restart_policy: "always"
+    env:
+      LIGHTAPI_HOME: "/opt/eosio_light_api"
+    command: "perl /opt/eosio_light_api/scripts/lightapi_dbwrite.pl --network=eos --port={{ lightapi_dbwrite_port }} --dsn=DBI:MariaDB:database={{ mariadb_db }};host={{ mariadb_host }} --dbuser={{ mariadb_user }} --dbpw={{ mariadb_password }}"
+    networks:
+      - name: "{{ lightapi_container_network }}"
+    networks_cli_compatible: true
+    exposed_ports:
+      - "{{ lightapi_dbwrite_port }}"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+
+- name: Generate eos chronicle config
+  template:
+    src: "chronicle.ini.j2"
+    dest: "{{ chronicle_config_dir }}/chronicle.ini"
+  register: gen_chronicle_conf
+
+- name: Get eos chronicle container info
+  community.docker.docker_container_info:
+    name: "{{ chronicle_container_name }}"
+  register: eos_chronicle_container
+
+- include_tasks: bootstrap_chronicle.yml
+  when: not eos_chronicle_container.exists
+
+- name: Ensure eos chronicle container
+  community.docker.docker_container:
+    name: "{{ chronicle_container_name }}"
+    image: "{{ chronicle_container_image }}"
+    pull: true
+    restart_policy: "unless-stopped"
+    restart: "{{ gen_chronicle_conf.changed }}"
+    timeout: 600
+    stop_timeout: 600
+    state: "started"
+    command: "chronicle-receiver -c /etc/chronicle/chronicle.ini -d /opt/chronicle"
+    networks:
+      - name: "{{ chronicle_container_network }}"
+    networks_cli_compatible: "yes"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "{{ chronicle_config_dir }}:/etc/chronicle:rw"
+      - "{{ chronicle_data_dir }}:/opt/chronicle:rw"
