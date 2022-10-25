@@ -95,7 +95,7 @@
     restart: "{{ mariadb_initialization.changed }}"
     env:
       LIGHTAPI_HOME: "/opt/eosio_light_api"
-    command: "bash -c 'while true; do perl /opt/eosio_light_api/scripts/lightapi_holdercounts.pl; sleep 300; done'"
+    command: "bash -c 'while true; do perl /opt/eosio_light_api/scripts/lightapi_holdercounts.pl --dsn=\"DBI:MariaDB:database={{ mariadb_db }};host={{ mariadb_host }}\" --dbuser={{ mariadb_user }} --dbpw={{ mariadb_password }}; sleep 300; done'"
     networks:
       - name: "{{ lightapi_container_network }}"
     networks_cli_compatible: true

@@ -51,6 +51,7 @@
       - "/etc/localtime:/etc/localtime:ro"
       - "{{ nodeos_config_dir }}:/etc/nodeos:rw"
       - "{{ nodeos_data_dir }}:/opt/nodeos:rw"
+  register: eos_nodeos
 
 - name: Extract eos nodeos start block
   shell: |
@@ -59,6 +60,7 @@
   until: start_block.stdout != ''
   retries: 1000
   delay: 10
+  when: eos_nodeos.changed
 
 - name: Ensure lightapi database eos related tables
   docker_container:
